@@ -1,0 +1,22 @@
+# --- Flask & Web Server ---
+flask==3.0.3
+flask-SQLAlchemy==3.1.1
+flask-Cors==4.0.1
+flask-JWT-Extended==4.6.0
+flask-Marshmallow==1.2.1
+python-dotenv==1.0.1
+gunicorn==22.0.0
+
+# --- Database & ORM ---
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.31
+marshmallow==3.21.3
+marshmallow-sqlalchemy==1.0.0
+
+# --- Data Analysis & Prediction ---
+pandas==2.2.2
+numpy==1.26.4
+scipy==1.13.1
+statsmodels==0.14.2
+scikit-learn==1.5.1
+matplotlib==3.9.1
