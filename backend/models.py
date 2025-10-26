@@ -6,7 +6,7 @@ db = SQLAlchemy()
 
 class User(db.Model):
     __tablename__ = 'users'
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String, nullable=False)
     last_name = db.Column(db.String, nullable=False)
     name = db.Column(db.String, nullable=False)
@@ -17,14 +17,14 @@ class User(db.Model):
 
 class Patient(db.Model):
     __tablename__ = 'patients'
-    id = db.Column(UUID(as_uuid=True), db.ForeignKey('users.id'), primary_key=True)
+    id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
     dob = db.Column(db.Date, nullable=False)
     case_records = db.relationship('CaseRecord', backref='patient', lazy=True, cascade="all, delete-orphan")
     vaccinations = db.relationship('Vaccination', backref='patient', lazy=True, cascade="all, delete-orphan")
 
 class Location(db.Model):
     __tablename__ = 'locations'
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False)
     address = db.Column(db.String, nullable=False)
     street = db.Column(db.String, nullable=False)
@@ -34,15 +34,15 @@ class Location(db.Model):
 
 class CaseRecord(db.Model):
     __tablename__ = 'case_records'
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    patient_id = db.Column(UUID(as_uuid=True), db.ForeignKey('patients.id'), nullable=False)
-    location_id = db.Column(UUID(as_uuid=True), db.ForeignKey('locations.id'), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
+    location_id = db.Column(db.Integer, db.ForeignKey('locations.id'), nullable=False)
     diag_date = db.Column(db.Date, nullable=False)
     status = db.Column(db.String, nullable=False)
 
 class Vaccination(db.Model):
     __tablename__ = 'vaccinations'
-    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    patient_id = db.Column(UUID(as_uuid=True), db.ForeignKey('patients.id'), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     vaccine_type = db.Column(db.String, nullable=False)

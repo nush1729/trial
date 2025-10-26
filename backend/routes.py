@@ -9,23 +9,26 @@ api = Blueprint('api', __name__)
 @api.route('/login', methods=['POST'])
 def login():
     data = request.json
-    email = data.get('email')
     password = data.get('password')
-    contact = data.get('contact')
 
-    # Explicitly handle admin login first
-    if email and '@' in email:
-        user = User.query.filter_by(email=email).first()
+    # Patient Login attempt (using 'contact')
+    contact = data.get('contact')
+    if contact:
+        patient_email = f"{contact.strip()}@patient.local"
+        user = User.query.filter_by(email=patient_email).first()
+        # Check for user, password match, and correct role
+        if user and user.password == password and user.role == 'patient':
+            return jsonify({"role": "patient", "id": user.id, "name": user.name})
+
+    # Admin Login attempt (using 'email')
+    email = data.get('email')
+    if email:
+        user = User.query.filter_by(email=email.strip()).first()
+        # Check for user, password match, and correct role
         if user and user.password == password and user.role == 'admin':
             return jsonify({"role": "admin", "email": user.email, "name": user.name})
-    
-    # Handle patient login
-    elif contact:
-        patient_email = f"{contact}@patient.local"
-        user = User.query.filter_by(email=patient_email).first()
-        if user and user.password == password and user.role == 'patient':
-            return jsonify({"role": "patient", "id": str(user.id), "name": user.name})
 
+    # If all checks fail
     return jsonify({"error": "Invalid credentials"}), 401
 
 
@@ -55,11 +58,11 @@ def handle_patients():
 
     patients = db.session.query(User, Patient).join(Patient, User.id == Patient.id).order_by(User.name).all()
     return jsonify([{
-        "id": str(p.User.id), "name": p.User.name, "first_name": p.User.first_name, "last_name": p.User.last_name, 
+        "id": p.User.id, "name": p.User.name, "first_name": p.User.first_name, "last_name": p.User.last_name,
         "contact": p.User.email.split('@')[0], "dob": p.Patient.dob.isoformat()
     } for p in patients])
 
-@api.route('/patients/<uuid:patient_id>', methods=['GET', 'PUT', 'DELETE'])
+@api.route('/patients/<int:patient_id>', methods=['GET', 'PUT', 'DELETE'])
 def handle_patient(patient_id):
     user = User.query.get_or_404(patient_id)
     if user.role != 'patient':
@@ -67,7 +70,7 @@ def handle_patient(patient_id):
 
     if request.method == 'GET':
         return jsonify({
-            "id": str(user.id), "name": user.name, "first_name": user.first_name, "last_name": user.last_name,
+            "id": user.id, "name": user.name, "first_name": user.first_name, "last_name": user.last_name,
             "contact": user.email.split('@')[0], "dob": user.patient.dob.isoformat()
         })
     
@@ -85,8 +88,7 @@ def handle_patient(patient_id):
     db.session.commit()
     return jsonify({"message": "Patient deleted"}), 204
 
-# --- Location, CaseRecord, Vaccination, and Prediction Routes Remain the Same ---
-# (No changes needed for the routes below this line)
+# --- Location, CaseRecord, Vaccination, and Prediction Routes ---
 
 @api.route('/locations', methods=['GET', 'POST'])
 def handle_locations():
@@ -98,9 +100,9 @@ def handle_locations():
         return jsonify({"message": "Location created"}), 201
 
     locations = Location.query.order_by(Location.name).all()
-    return jsonify([{"id": str(l.id), "name": l.name, "address": l.address, "street": l.street, "zip": l.zip, "state": l.state} for l in locations])
+    return jsonify([{"id": l.id, "name": l.name, "address": l.address, "street": l.street, "zip": l.zip, "state": l.state} for l in locations])
 
-@api.route('/locations/<uuid:loc_id>', methods=['PUT', 'DELETE'])
+@api.route('/locations/<int:loc_id>', methods=['PUT', 'DELETE'])
 def handle_location(loc_id):
     location = Location.query.get_or_404(loc_id)
     if request.method == 'PUT':
@@ -135,12 +137,12 @@ def handle_case_records():
         .order_by(CaseRecord.diag_date.desc()).all()
         
     return jsonify([{
-        "id": str(r.CaseRecord.id), "patient_id": str(r.CaseRecord.patient_id), "location_id": str(r.CaseRecord.location_id),
+        "id": r.CaseRecord.id, "patient_id": r.CaseRecord.patient_id, "location_id": r.CaseRecord.location_id,
         "diag_date": r.CaseRecord.diag_date.isoformat(), "status": r.CaseRecord.status,
         "patients": {"name": r.name}, "locations": {"name": r.location_name, "state": r.state}
     } for r in records])
 
-@api.route('/case_records/patient/<uuid:patient_id>', methods=['GET'])
+@api.route('/case_records/patient/<int:patient_id>', methods=['GET'])
 def get_cases_for_patient(patient_id):
     records = db.session.query(CaseRecord, Location.name, Location.address, Location.state)\
         .join(Location, CaseRecord.location_id == Location.id)\
@@ -148,11 +150,11 @@ def get_cases_for_patient(patient_id):
         .order_by(CaseRecord.diag_date.desc()).all()
     
     return jsonify([{
-        "id": str(r.CaseRecord.id), "diag_date": r.CaseRecord.diag_date.isoformat(), "status": r.CaseRecord.status,
+        "id": r.CaseRecord.id, "diag_date": r.CaseRecord.diag_date.isoformat(), "status": r.CaseRecord.status,
         "locations": {"name": r.name, "address": r.address, "state": r.state}
     } for r in records])
 
-@api.route('/case_records/<uuid:rec_id>', methods=['PUT', 'DELETE'])
+@api.route('/case_records/<int:rec_id>', methods=['PUT', 'DELETE'])
 def handle_case_record(rec_id):
     record = CaseRecord.query.get_or_404(rec_id)
     if request.method == 'PUT':
@@ -187,17 +189,17 @@ def handle_vaccinations():
         .order_by(Vaccination.date.desc()).all()
         
     return jsonify([{
-        "id": str(r.Vaccination.id), "patient_id": str(r.Vaccination.patient_id), 
+        "id": r.Vaccination.id, "patient_id": r.Vaccination.patient_id,
         "date": r.Vaccination.date.isoformat(), "vaccine_type": r.Vaccination.vaccine_type,
         "patients": {"name": r.name}
     } for r in vax_records])
 
-@api.route('/vaccinations/patient/<uuid:patient_id>', methods=['GET'])
+@api.route('/vaccinations/patient/<int:patient_id>', methods=['GET'])
 def get_vax_for_patient(patient_id):
     records = Vaccination.query.filter_by(patient_id=patient_id).order_by(Vaccination.date.desc()).all()
-    return jsonify([{"id": str(r.id), "date": r.date.isoformat(), "vaccine_type": r.vaccine_type} for r in records])
+    return jsonify([{"id": r.id, "date": r.date.isoformat(), "vaccine_type": r.vaccine_type} for r in records])
 
-@api.route('/vaccinations/<uuid:vax_id>', methods=['PUT', 'DELETE'])
+@api.route('/vaccinations/<int:vax_id>', methods=['PUT', 'DELETE'])
 def handle_vaccination(vax_id):
     vax = Vaccination.query.get_or_404(vax_id)
     if request.method == 'PUT':

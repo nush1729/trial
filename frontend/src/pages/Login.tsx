@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom"; // Import Link
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Activity } from "lucide-react";
-import { login } from "@/lib/apiClient"; // Import the new unified login function
+import { login } from "@/lib/apiClient";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -119,8 +119,14 @@ const Login = () => {
                     {isLoading ? "Signing in..." : "Sign In as Patient"}
                   </Button>
                   <p className="text-xs text-muted-foreground text-center pt-2">
-                    For demo, your password is your contact number (e.g., 9876543210).
+                    For demo, your password is your contact number.
                   </p>
+                  {/* Add this link to the signup page */}
+                  <div className="text-center pt-2">
+                    <Link to="/signup" className="text-sm text-blue-500 underline hover:text-blue-700">
+                      Don't have an account? Sign Up
+                    </Link>
+                  </div>
                 </form>
               </TabsContent>
             </Tabs>
