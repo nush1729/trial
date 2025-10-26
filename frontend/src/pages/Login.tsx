@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Activity } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { login } from "@/lib/apiClient"; // Import the new unified login function
 
 const Login = () => {
   const navigate = useNavigate();
@@ -21,17 +21,21 @@ const Login = () => {
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
 
-    // Simple admin authentication - in production, implement proper auth
-    if (email === "admin@covid.com" && password === "admin123") {
-      sessionStorage.setItem("userRole", "admin");
-      sessionStorage.setItem("userEmail", email);
-      toast.success("Admin login successful");
-      navigate("/admin");
-    } else {
+    try {
+      const data = await login({ email, password });
+      if (data.role === 'admin') {
+        sessionStorage.setItem("userRole", data.role);
+        sessionStorage.setItem("userEmail", data.email);
+        toast.success("Admin login successful");
+        navigate("/admin");
+      } else {
+        throw new Error("Not an admin user");
+      }
+    } catch (error) {
       toast.error("Invalid admin credentials");
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   const handlePatientLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -40,31 +44,24 @@ const Login = () => {
     
     const formData = new FormData(e.currentTarget);
     const contact = formData.get("contact") as string;
+    const password = formData.get("password") as string;
 
-    // For patient login, we'll verify against the patients table
-    const { data, error } = await supabase
-      .from("patients")
-      .select("*")
-      .eq("contact", contact)
-      .maybeSingle();
-
-    if (error) {
-      toast.error("Error logging in");
+    try {
+      const data = await login({ contact, password });
+      if (data.role === 'patient') {
+        sessionStorage.setItem("userRole", data.role);
+        sessionStorage.setItem("patientId", data.id);
+        sessionStorage.setItem("patientName", data.name);
+        toast.success("Patient login successful");
+        navigate("/patient");
+      } else {
+        throw new Error("Not a patient user");
+      }
+    } catch (error) {
+      toast.error("Patient not found or invalid password.");
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    if (data) {
-      sessionStorage.setItem("userRole", "patient");
-      sessionStorage.setItem("patientId", data.id);
-      sessionStorage.setItem("patientName", data.name);
-      toast.success("Patient login successful");
-      navigate("/patient");
-    } else {
-      toast.error("Patient not found. Please contact administrator.");
-    }
-    
-    setIsLoading(false);
   };
 
   return (
@@ -93,53 +90,36 @@ const Login = () => {
               </TabsList>
               
               <TabsContent value="admin">
-                <form onSubmit={handleAdminLogin} className="space-y-4">
+                <form onSubmit={handleAdminLogin} className="space-y-4 pt-4">
                   <div className="space-y-2">
                     <Label htmlFor="admin-email">Email</Label>
-                    <Input
-                      id="admin-email"
-                      name="email"
-                      type="email"
-                      placeholder="admin@covid.com"
-                      required
-                    />
+                    <Input id="admin-email" name="email" type="email" defaultValue="admin@covid.com" required />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="admin-password">Password</Label>
-                    <Input
-                      id="admin-password"
-                      name="password"
-                      type="password"
-                      placeholder="Enter your password"
-                      required
-                    />
+                    <Input id="admin-password" name="password" type="password" defaultValue="admin123" required />
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? "Signing in..." : "Sign In as Admin"}
                   </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Demo: admin@covid.com / admin123
-                  </p>
                 </form>
               </TabsContent>
               
               <TabsContent value="patient">
-                <form onSubmit={handlePatientLogin} className="space-y-4">
+                <form onSubmit={handlePatientLogin} className="space-y-4 pt-4">
                   <div className="space-y-2">
                     <Label htmlFor="patient-contact">Contact Number</Label>
-                    <Input
-                      id="patient-contact"
-                      name="contact"
-                      type="text"
-                      placeholder="Enter your registered contact number"
-                      required
-                    />
+                    <Input id="patient-contact" name="contact" type="text" placeholder="Enter your contact number" required />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="patient-password">Password</Label>
+                    <Input id="patient-password" name="password" type="password" placeholder="Enter your password" required />
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? "Signing in..." : "Sign In as Patient"}
                   </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Enter your registered contact number to access your records
+                  <p className="text-xs text-muted-foreground text-center pt-2">
+                    For demo, your password is your contact number (e.g., 9876543210).
                   </p>
                 </form>
               </TabsContent>

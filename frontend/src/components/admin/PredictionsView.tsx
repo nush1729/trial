@@ -1,89 +1,60 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { getPredictionStates, getPredictions } from "@/lib/apiClient";
+import { toast } from "sonner";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 const PredictionsView = () => {
   const [states, setStates] = useState<string[]>([]);
   const [selectedState, setSelectedState] = useState("");
   const [chartData, setChartData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    const loadStates = async () => {
+      try {
+        const data = await getPredictionStates();
+        setStates(data || []);
+        if (data && data.length > 0) {
+          setSelectedState(data[0]);
+        }
+      } catch (error) {
+        toast.error("Failed to load states for prediction.");
+      }
+    };
     loadStates();
   }, []);
 
   useEffect(() => {
     if (selectedState) {
-      loadStateData(selectedState);
+      const loadStateData = async () => {
+        setIsLoading(true);
+        try {
+          const data = await getPredictions(selectedState);
+          if (data && data.confirmed) {
+            // The backend returns separate arrays, so we need to combine them
+            // for the chart.
+            const formattedData = data.confirmed.map((value: number, index: number) => ({
+              date: `Day ${index + 1}`,
+              confirmed: value,
+              recovered: data.recovered[index],
+              deaths: data.deaths[index],
+              // Calculate active cases based on the predicted data
+              active: value - data.recovered[index] - data.deaths[index],
+            }));
+            setChartData(formattedData);
+          }
+        } catch (error) {
+          toast.error(`Failed to load predictions for ${selectedState}.`);
+          setChartData([]);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      loadStateData();
     }
   }, [selectedState]);
-
-  const loadStates = async () => {
-    const { data } = await supabase
-      .from("state_stats")
-      .select("state")
-      .order("state");
-
-    if (data) {
-      const uniqueStates = [...new Set(data.map(d => d.state))];
-      setStates(uniqueStates);
-      if (uniqueStates.length > 0) {
-        setSelectedState(uniqueStates[0]);
-      }
-    }
-  };
-
-  const loadStateData = async (state: string) => {
-    const { data } = await supabase
-      .from("state_stats")
-      .select("*")
-      .eq("state", state)
-      .single();
-
-    if (data) {
-      // Generate trend data (simulated prediction for demonstration)
-      const trend = [];
-      const today = new Date();
-      
-      // Historical data point (current)
-      trend.push({
-        date: "Current",
-        confirmed: data.confirmed,
-        recovered: data.recovered,
-        active: data.active,
-        deaths: data.deaths,
-      });
-
-      // Generate predicted data for next 10-20 days
-      // This is a simplified simulation - in production you would use ARIMA or similar models
-      const recoveryRate = data.recovered / data.confirmed;
-      const deathRate = data.deaths / data.confirmed;
-      
-      for (let i = 1; i <= 15; i++) {
-        const date = new Date(today);
-        date.setDate(date.getDate() + i);
-        
-        const lastPoint = trend[trend.length - 1];
-        const growthRate = 0.02; // 2% daily growth simulation
-        
-        const newConfirmed = Math.round(lastPoint.confirmed * (1 + growthRate));
-        const newRecovered = Math.round(newConfirmed * recoveryRate);
-        const newDeaths = Math.round(newConfirmed * deathRate);
-        const newActive = newConfirmed - newRecovered - newDeaths;
-
-        trend.push({
-          date: `Day ${i}`,
-          confirmed: newConfirmed,
-          recovered: newRecovered,
-          active: newActive,
-          deaths: newDeaths,
-        });
-      }
-
-      setChartData(trend);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -91,7 +62,7 @@ const PredictionsView = () => {
         <CardHeader>
           <CardTitle>COVID-19 Trend Predictions</CardTitle>
           <CardDescription>
-            State-wise predictions for the next 10-20 days (simulated trends)
+            State-wise ARIMA model predictions for the next 20 days.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -110,7 +81,9 @@ const PredictionsView = () => {
             </Select>
           </div>
 
-          {chartData.length > 0 && (
+          {isLoading ? (
+            <p>Loading predictions...</p>
+          ) : chartData.length > 0 ? (
             <div className="space-y-6">
               <div>
                 <h4 className="text-sm font-semibold mb-4">Confirmed Cases Trend</h4>
@@ -179,6 +152,8 @@ const PredictionsView = () => {
                 </ResponsiveContainer>
               </div>
             </div>
+          ) : (
+             <p>No prediction data available for the selected state.</p>
           )}
         </CardContent>
       </Card>
@@ -189,10 +164,7 @@ const PredictionsView = () => {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
           <p>
-            These predictions use simplified trend modeling based on current state statistics.
-            For production use, integrate with Python-based ARIMA models via an external API
-            for more accurate forecasting. The trends shown here are for demonstration purposes
-            and simulate potential growth patterns based on recovery and death rates.
+            These predictions are generated using a time-series ARIMA model on the backend, trained on simulated historical data. The model forecasts trends for Confirmed Cases, Recoveries, and Deaths over the next 20 days.
           </p>
         </CardContent>
       </Card>

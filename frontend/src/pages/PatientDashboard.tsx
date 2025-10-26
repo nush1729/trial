@@ -3,16 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Activity, FileText, Syringe, LogOut } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getPatientById, getCaseRecordsByPatient, getVaccinationsByPatient } from "@/lib/apiClient";
 
 const PatientDashboard = () => {
   const navigate = useNavigate();
@@ -34,34 +27,13 @@ const PatientDashboard = () => {
 
   const loadPatientData = async (patientId: string) => {
     try {
-      // Load patient info
-      const { data: patient } = await supabase
-        .from("patients")
-        .select("*")
-        .eq("id", patientId)
-        .single();
-
+      const patient = await getPatientById(patientId);
       setPatientInfo(patient);
 
-      // Load case records with location info
-      const { data: cases } = await supabase
-        .from("case_records")
-        .select(`
-          *,
-          locations (name, address, state)
-        `)
-        .eq("patient_id", patientId)
-        .order("diag_date", { ascending: false });
-
+      const cases = await getCaseRecordsByPatient(patientId);
       setCaseRecords(cases || []);
 
-      // Load vaccinations
-      const { data: vax } = await supabase
-        .from("vaccinations")
-        .select("*")
-        .eq("patient_id", patientId)
-        .order("date", { ascending: false });
-
+      const vax = await getVaccinationsByPatient(patientId);
       setVaccinations(vax || []);
     } catch (error) {
       toast.error("Failed to load patient data");
@@ -76,14 +48,10 @@ const PatientDashboard = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "active":
-        return "text-warning";
-      case "recovered":
-        return "text-secondary";
-      case "death":
-        return "text-destructive";
-      default:
-        return "";
+      case "active": return "text-warning";
+      case "recovered": return "text-secondary";
+      case "death": return "text-destructive";
+      default: return "";
     }
   };
 
@@ -108,7 +76,6 @@ const PatientDashboard = () => {
       </header>
 
       <main className="container mx-auto px-6 py-8">
-        {/* Patient Info Card */}
         {patientInfo && (
           <Card className="mb-8">
             <CardHeader>
@@ -138,7 +105,6 @@ const PatientDashboard = () => {
           </Card>
         )}
 
-        {/* Case Records */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -177,7 +143,6 @@ const PatientDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Vaccinations */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

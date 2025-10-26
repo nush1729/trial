@@ -6,7 +6,9 @@ import os
 # Suppress warnings from statsmodels for a cleaner output
 warnings.filterwarnings("ignore")
 
-DATA_FILE_PATH = os.path.join('data', 'statestats.csv')
+# Make the path relative to the current file's location for robustness
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE_PATH = os.path.join(BASE_DIR, 'data', 'statestats.csv')
 
 def get_aggregated_states_data():
     """

@@ -3,25 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getVaccinations, createVaccination, updateVaccination, deleteVaccination, getPatients } from "@/lib/apiClient";
 
 interface VaccinationsManagementProps {
   onUpdate: () => void;
@@ -43,77 +29,52 @@ const VaccinationsManagement = ({ onUpdate }: VaccinationsManagementProps) => {
   }, []);
 
   const loadData = async () => {
-    const { data: vaxData } = await supabase
-      .from("vaccinations")
-      .select(`
-        *,
-        patients (name)
-      `)
-      .order("date", { ascending: false });
-
-    setVaccinations(vaxData || []);
-
-    const { data: patientsData } = await supabase
-      .from("patients")
-      .select("id, name")
-      .order("name");
-    setPatients(patientsData || []);
+    try {
+      const [vaxData, patientsData] = await Promise.all([
+          getVaccinations(),
+          getPatients()
+      ]);
+      setVaccinations(vaxData || []);
+      setPatients(patientsData || []);
+    } catch (error) {
+        toast.error("Failed to load data");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    if (editingVaccination) {
-      const { error } = await supabase
-        .from("vaccinations")
-        .update(formData)
-        .eq("id", editingVaccination.id);
-
-      if (error) {
-        toast.error("Failed to update vaccination");
-        return;
-      }
-
-      toast.success("Vaccination updated successfully");
-    } else {
-      const { error } = await supabase.from("vaccinations").insert([formData]);
-
-      if (error) {
-        toast.error("Failed to create vaccination");
-        return;
-      }
-
-      toast.success("Vaccination created successfully");
+    try {
+        if (editingVaccination) {
+            await updateVaccination(editingVaccination.id, formData);
+            toast.success("Vaccination updated successfully");
+        } else {
+            await createVaccination(formData);
+            toast.success("Vaccination created successfully");
+        }
+        setIsOpen(false);
+        setEditingVaccination(null);
+        resetForm();
+        loadData();
+        onUpdate();
+    } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Operation failed");
     }
-
-    setIsOpen(false);
-    setEditingVaccination(null);
-    resetForm();
-    loadData();
-    onUpdate();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this vaccination record?")) return;
-
-    const { error } = await supabase.from("vaccinations").delete().eq("id", id);
-
-    if (error) {
-      toast.error("Failed to delete vaccination");
-      return;
+    try {
+        await deleteVaccination(id);
+        toast.success("Vaccination deleted successfully");
+        loadData();
+        onUpdate();
+    } catch (error) {
+        toast.error("Failed to delete vaccination");
     }
-
-    toast.success("Vaccination deleted successfully");
-    loadData();
-    onUpdate();
   };
 
   const resetForm = () => {
-    setFormData({
-      patient_id: "",
-      date: "",
-      vaccine_type: "",
-    });
+    setFormData({ patient_id: "", date: "", vaccine_type: "" });
   };
 
   const openDialog = (vaccination: any = null) => {

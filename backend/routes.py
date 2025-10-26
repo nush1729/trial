@@ -1,56 +1,93 @@
 from flask import Blueprint, jsonify, request
-from models import db, Patient, Location, CaseRecord, Vaccination, User
+from models import db, User, Patient, Location, CaseRecord, Vaccination
 from services import get_arima_predictions, get_aggregated_states_data
 import datetime
 
 api = Blueprint('api', __name__)
 
-# --- Patient Routes ---
+# --- UNIFIED LOGIN ROUTE (Corrected Logic) ---
+@api.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+    contact = data.get('contact')
+
+    # Explicitly handle admin login first
+    if email and '@' in email:
+        user = User.query.filter_by(email=email).first()
+        if user and user.password == password and user.role == 'admin':
+            return jsonify({"role": "admin", "email": user.email, "name": user.name})
+    
+    # Handle patient login
+    elif contact:
+        patient_email = f"{contact}@patient.local"
+        user = User.query.filter_by(email=patient_email).first()
+        if user and user.password == password and user.role == 'patient':
+            return jsonify({"role": "patient", "id": str(user.id), "name": user.name})
+
+    return jsonify({"error": "Invalid credentials"}), 401
+
+
+# --- Patient Routes (Modified) ---
 @api.route('/patients', methods=['GET', 'POST'])
 def handle_patients():
     if request.method == 'POST':
         data = request.json
-        new_patient = Patient(
+        new_user = User(
             first_name=data['first_name'],
             last_name=data['last_name'],
             name=f"{data['first_name']} {data['last_name']}",
-            contact=data['contact'],
+            email=f"{data['contact']}@patient.local",
+            password=data['contact'],
+            role='patient'
+        )
+        db.session.add(new_user)
+        db.session.flush()
+
+        new_patient = Patient(
+            id=new_user.id,
             dob=datetime.datetime.strptime(data['dob'], '%Y-%m-%d').date()
         )
         db.session.add(new_patient)
         db.session.commit()
         return jsonify({"message": "Patient created"}), 201
 
-    patients = Patient.query.order_by(Patient.name).all()
+    patients = db.session.query(User, Patient).join(Patient, User.id == Patient.id).order_by(User.name).all()
     return jsonify([{
-        "id": str(p.id), "name": p.name, "first_name": p.first_name, "last_name": p.last_name, 
-        "contact": p.contact, "dob": p.dob.isoformat()
+        "id": str(p.User.id), "name": p.User.name, "first_name": p.User.first_name, "last_name": p.User.last_name, 
+        "contact": p.User.email.split('@')[0], "dob": p.Patient.dob.isoformat()
     } for p in patients])
-    
+
 @api.route('/patients/<uuid:patient_id>', methods=['GET', 'PUT', 'DELETE'])
 def handle_patient(patient_id):
-    patient = Patient.query.get_or_404(patient_id)
+    user = User.query.get_or_404(patient_id)
+    if user.role != 'patient':
+        return jsonify({"error": "Not a patient"}), 404
+
     if request.method == 'GET':
         return jsonify({
-            "id": str(patient.id), "name": patient.name, "contact": patient.contact,
-            "dob": patient.dob.isoformat()
+            "id": str(user.id), "name": user.name, "first_name": user.first_name, "last_name": user.last_name,
+            "contact": user.email.split('@')[0], "dob": user.patient.dob.isoformat()
         })
     
     if request.method == 'PUT':
         data = request.json
-        patient.first_name = data.get('first_name', patient.first_name)
-        patient.last_name = data.get('last_name', patient.last_name)
-        patient.name = f"{data.get('first_name', patient.first_name)} {data.get('last_name', patient.last_name)}"
-        patient.contact = data.get('contact', patient.contact)
-        patient.dob = datetime.datetime.strptime(data['dob'], '%Y-%m-%d').date() if 'dob' in data else patient.dob
+        user.first_name = data.get('first_name', user.first_name)
+        user.last_name = data.get('last_name', user.last_name)
+        user.name = f"{data.get('first_name', user.first_name)} {data.get('last_name', user.last_name)}"
+        user.email = f"{data['contact']}@patient.local" if 'contact' in data else user.email
+        user.patient.dob = datetime.datetime.strptime(data['dob'], '%Y-%m-%d').date() if 'dob' in data else user.patient.dob
         db.session.commit()
         return jsonify({"message": "Patient updated"})
     
-    db.session.delete(patient)
+    db.session.delete(user)
     db.session.commit()
     return jsonify({"message": "Patient deleted"}), 204
 
-# --- Location Routes ---
+# --- Location, CaseRecord, Vaccination, and Prediction Routes Remain the Same ---
+# (No changes needed for the routes below this line)
+
 @api.route('/locations', methods=['GET', 'POST'])
 def handle_locations():
     if request.method == 'POST':
@@ -77,7 +114,6 @@ def handle_location(loc_id):
     db.session.commit()
     return jsonify({"message": "Location deleted"}), 204
     
-# --- Case Record Routes ---
 @api.route('/case_records', methods=['GET', 'POST'])
 def handle_case_records():
     if request.method == 'POST':
@@ -92,8 +128,9 @@ def handle_case_records():
         db.session.commit()
         return jsonify({"message": "Case record created"}), 201
 
-    records = db.session.query(CaseRecord, Patient.name, Location.name.label("location_name"), Location.state)\
+    records = db.session.query(CaseRecord, User.name, Location.name.label("location_name"), Location.state)\
         .join(Patient, CaseRecord.patient_id == Patient.id)\
+        .join(User, Patient.id == User.id)\
         .join(Location, CaseRecord.location_id == Location.id)\
         .order_by(CaseRecord.diag_date.desc()).all()
         
@@ -131,7 +168,6 @@ def handle_case_record(rec_id):
     db.session.commit()
     return jsonify({"message": "Case record deleted"}), 204
     
-# --- Vaccination Routes ---
 @api.route('/vaccinations', methods=['GET', 'POST'])
 def handle_vaccinations():
     if request.method == 'POST':
@@ -145,8 +181,9 @@ def handle_vaccinations():
         db.session.commit()
         return jsonify({"message": "Vaccination created"}), 201
 
-    vax_records = db.session.query(Vaccination, Patient.name)\
+    vax_records = db.session.query(Vaccination, User.name)\
         .join(Patient, Vaccination.patient_id == Patient.id)\
+        .join(User, Patient.id == User.id)\
         .order_by(Vaccination.date.desc()).all()
         
     return jsonify([{
@@ -175,22 +212,6 @@ def handle_vaccination(vax_id):
     db.session.commit()
     return jsonify({"message": "Vaccination deleted"}), 204
 
-# --- Login & Stats Routes ---
-@api.route('/login/admin', methods=['POST'])
-def login_admin():
-    data = request.json
-    if data.get('email') == 'admin@covid.com' and data.get('password') == 'admin123':
-        return jsonify({"role": "admin", "email": data['email']})
-    return jsonify({"error": "Invalid credentials"}), 401
-
-@api.route('/login/patient', methods=['POST'])
-def login_patient():
-    data = request.json
-    patient = Patient.query.filter_by(contact=data.get('contact')).first()
-    if patient:
-        return jsonify({"role": "patient", "id": str(patient.id), "name": patient.name})
-    return jsonify({"error": "Patient not found"}), 404
-    
 @api.route('/stats/dashboard', methods=['GET'])
 def dashboard_stats():
     totalPatients = db.session.query(Patient).count()
@@ -205,8 +226,15 @@ def dashboard_stats():
         "deaths": deaths,
         "vaccinations": vaccinations
     })
+
+@api.route('/stats/states', methods=['GET'])
+def get_state_stats():
+    try:
+        agg_df = get_aggregated_states_data()
+        return jsonify(agg_df.to_dict(orient='records'))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     
-# --- Prediction Routes ---
 @api.route('/predict/states', methods=['GET'])
 def get_states_for_prediction():
     try:

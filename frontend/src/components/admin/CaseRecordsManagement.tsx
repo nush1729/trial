@@ -3,25 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getCaseRecords, createCaseRecord, updateCaseRecord, deleteCaseRecord, getPatients, getLocations } from "@/lib/apiClient";
 
 interface CaseRecordsManagementProps {
   onUpdate: () => void;
@@ -45,85 +31,56 @@ const CaseRecordsManagement = ({ onUpdate }: CaseRecordsManagementProps) => {
   }, []);
 
   const loadData = async () => {
-    const { data: records } = await supabase
-      .from("case_records")
-      .select(`
-        *,
-        patients (name),
-        locations (name, state)
-      `)
-      .order("diag_date", { ascending: false });
-
-    setCaseRecords(records || []);
-
-    const { data: patientsData } = await supabase
-      .from("patients")
-      .select("id, name")
-      .order("name");
-    setPatients(patientsData || []);
-
-    const { data: locationsData } = await supabase
-      .from("locations")
-      .select("id, name, state")
-      .order("name");
-    setLocations(locationsData || []);
+    try {
+        const [recordsData, patientsData, locationsData] = await Promise.all([
+            getCaseRecords(),
+            getPatients(),
+            getLocations()
+        ]);
+        setCaseRecords(recordsData || []);
+        setPatients(patientsData || []);
+        setLocations(locationsData || []);
+    } catch (error) {
+        toast.error("Failed to load necessary data.");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (editingRecord) {
-      const { error } = await supabase
-        .from("case_records")
-        .update(formData)
-        .eq("id", editingRecord.id);
-
-      if (error) {
-        toast.error("Failed to update case record");
-        return;
-      }
-
-      toast.success("Case record updated successfully");
-    } else {
-      const { error } = await supabase.from("case_records").insert([formData]);
-
-      if (error) {
-        toast.error("Failed to create case record");
-        return;
-      }
-
-      toast.success("Case record created successfully");
+    try {
+        if (editingRecord) {
+            await updateCaseRecord(editingRecord.id, formData);
+            toast.success("Case record updated successfully");
+        } else {
+            await createCaseRecord(formData);
+            toast.success("Case record created successfully");
+        }
+        setIsOpen(false);
+        setEditingRecord(null);
+        resetForm();
+        loadData();
+        onUpdate();
+    } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Operation failed");
     }
-
-    setIsOpen(false);
-    setEditingRecord(null);
-    resetForm();
-    loadData();
-    onUpdate();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this case record?")) return;
 
-    const { error } = await supabase.from("case_records").delete().eq("id", id);
-
-    if (error) {
-      toast.error("Failed to delete case record");
-      return;
+    try {
+        await deleteCaseRecord(id);
+        toast.success("Case record deleted successfully");
+        loadData();
+        onUpdate();
+    } catch (error) {
+        toast.error("Failed to delete case record");
     }
-
-    toast.success("Case record deleted successfully");
-    loadData();
-    onUpdate();
   };
 
   const resetForm = () => {
-    setFormData({
-      patient_id: "",
-      location_id: "",
-      diag_date: "",
-      status: "active",
-    });
+    setFormData({ patient_id: "", location_id: "", diag_date: "", status: "active" });
   };
 
   const openDialog = (record: any = null) => {
@@ -141,17 +98,13 @@ const CaseRecordsManagement = ({ onUpdate }: CaseRecordsManagementProps) => {
     }
     setIsOpen(true);
   };
-
+  
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "active":
-        return "text-warning";
-      case "recovered":
-        return "text-secondary";
-      case "death":
-        return "text-destructive";
-      default:
-        return "";
+      case "active": return "text-warning";
+      case "recovered": return "text-secondary";
+      case "death": return "text-destructive";
+      default: return "";
     }
   };
 

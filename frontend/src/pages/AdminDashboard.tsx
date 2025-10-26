@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Activity, Users, Syringe, MapPin, FileText, BarChart3, LogOut } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getDashboardStats } from "@/lib/apiClient"; // Import from apiClient
 import PatientsManagement from "@/components/admin/PatientsManagement";
 import CaseRecordsManagement from "@/components/admin/CaseRecordsManagement";
 import VaccinationsManagement from "@/components/admin/VaccinationsManagement";
@@ -29,38 +29,13 @@ const AdminDashboard = () => {
       navigate("/");
       return;
     }
-
     loadStats();
   }, [navigate]);
 
   const loadStats = async () => {
     try {
-      // Get total patients
-      const { count: patientsCount } = await supabase
-        .from("patients")
-        .select("*", { count: "exact", head: true });
-
-      // Get case statistics
-      const { data: caseRecords } = await supabase
-        .from("case_records")
-        .select("status");
-
-      const activeCases = caseRecords?.filter(r => r.status === "active").length || 0;
-      const recovered = caseRecords?.filter(r => r.status === "recovered").length || 0;
-      const deaths = caseRecords?.filter(r => r.status === "death").length || 0;
-
-      // Get total vaccinations
-      const { count: vaccinationsCount } = await supabase
-        .from("vaccinations")
-        .select("*", { count: "exact", head: true });
-
-      setStats({
-        totalPatients: patientsCount || 0,
-        activeCases,
-        recovered,
-        deaths,
-        vaccinations: vaccinationsCount || 0,
-      });
+      const data = await getDashboardStats();
+      setStats(data);
     } catch (error) {
       toast.error("Failed to load statistics");
     }

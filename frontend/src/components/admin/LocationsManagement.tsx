@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { getLocations, createLocation, updateLocation, deleteLocation } from "@/lib/apiClient";
 import { toast } from "sonner";
 
 const LocationsManagement = () => {
@@ -32,17 +32,12 @@ const LocationsManagement = () => {
   }, []);
 
   const loadLocations = async () => {
-    const { data, error } = await supabase
-      .from("locations")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
+    try {
+      const data = await getLocations();
+      setLocations(data || []);
+    } catch (error) {
       toast.error("Failed to load locations");
-      return;
     }
-
-    setLocations(data || []);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -57,28 +52,19 @@ const LocationsManagement = () => {
       state: formData.get("state") as string,
     };
 
-    if (editingLocation) {
-      const { error } = await supabase
-        .from("locations")
-        .update(locationData)
-        .eq("id", editingLocation.id);
-
-      if (error) {
-        toast.error("Failed to update location");
-        return;
+    try {
+      if (editingLocation) {
+        await updateLocation(editingLocation.id, locationData);
+        toast.success("Location updated successfully");
+      } else {
+        await createLocation(locationData);
+        toast.success("Location created successfully");
       }
-
-      toast.success("Location updated successfully");
-    } else {
-      const { error } = await supabase.from("locations").insert([locationData]);
-
-      if (error) {
-        toast.error("Failed to create location");
+    } catch (error) {
+        toast.error(editingLocation ? "Failed to update location" : "Failed to create location");
         return;
-      }
-
-      toast.success("Location created successfully");
     }
+
 
     setIsOpen(false);
     setEditingLocation(null);
@@ -88,15 +74,13 @@ const LocationsManagement = () => {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this location?")) return;
 
-    const { error } = await supabase.from("locations").delete().eq("id", id);
-
-    if (error) {
-      toast.error("Failed to delete location");
-      return;
+    try {
+        await deleteLocation(id);
+        toast.success("Location deleted successfully");
+        loadLocations();
+    } catch (error) {
+        toast.error("Failed to delete location");
     }
-
-    toast.success("Location deleted successfully");
-    loadLocations();
   };
 
   const openDialog = (location: any = null) => {
